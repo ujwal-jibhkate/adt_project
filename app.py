@@ -1,0 +1,214 @@
+import streamlit as st
+import sqlite3
+import altair as alt
+import pandas as pd
+
+from backend import create_incident, read_incidents, update_incident, delete_incident, search_incident
+import uuid
+
+# Streamlit UI for the app
+st.title("911 Incident Management System")
+
+# Function to display the latest 10 incidents
+def display_incidents():
+    st.subheader("View Latest 10 Incidents")
+    incidents = read_incidents()
+
+    if not incidents:
+        st.write("No incidents found.")
+    else:
+        for incident in incidents:
+            # Access columns by name (incident is a sqlite3.Row object)
+            st.write(f"**Call Key**: {incident['call_key']} - **Priority**: {incident['priority']} - **Description**: {incident['description']}")
+            # Removed the delete button from the "View Latest 10 Incidents" section
+            # If you want to delete an incident, it will now be handled through the "Search Incidents" tab
+
+# Function to add a new incident
+def add_incident():
+    st.subheader("Add New Incident")
+    with st.form(key='add_incident_form'):
+        call_key = st.text_input("Call Key", value="")  # Optional: Leave blank for auto-generation
+        record_id = st.text_input("Record ID")
+        call_date_time = st.text_input("Call Date and Time (YYYY/MM/DD HH:MM:SS+00)")
+        priority = st.selectbox("Priority", ["Low", "Medium", "High", "Non-Emergency"])
+        description = st.text_area("Description")
+        call_number = st.text_input("Call Number")
+        incident_location_id = st.number_input("Incident Location ID", min_value=1)
+        reporter_location_id = st.number_input("Reporter Location ID", min_value=1)
+        jurisdiction_id = st.number_input("Jurisdiction ID", min_value=1)
+        
+        submit_button = st.form_submit_button(label="Add Incident")
+        
+        if submit_button:
+            # Generate call_key if not provided
+            if not call_key:
+                call_key = str(uuid.uuid4())
+            create_incident(call_key, record_id, call_date_time, priority, description, call_number, incident_location_id, reporter_location_id, jurisdiction_id)
+            st.success(f"Incident {call_key} added successfully!")
+
+# Function to update an incident
+def update_existing_incident():
+    st.subheader("Update Incident")
+    call_key = st.text_input("Enter Call Key to Update")
+    
+    if call_key:
+        incidents = search_incident(call_key=call_key)
+        
+        if incidents:
+            incident = incidents[0]  # Since call_key is unique, we can assume only one result
+            new_priority = st.selectbox("Priority", [incident["priority"], "Low", "Medium", "High", "Non-Emergency"])
+            new_description = st.text_area("Description", value=incident["description"])
+            
+            if st.button(f"Update {call_key}"):
+                update_incident(call_key, priority=new_priority, description=new_description)
+                st.success(f"Incident {call_key} updated successfully!")
+        else:
+            st.error(f"No incident found with call key: {call_key}")
+
+# Function to search incidents by call_key and display the result as a dictionary
+def search_incident_form():
+    st.subheader("Search Incidents by Call Key")
+    call_key = st.text_input("Enter Call Key")
+
+    if call_key:
+        results = search_incident(call_key=call_key)
+        
+        if results:
+            for incident in results:
+                # Display the result as a dictionary
+                st.write(f"**Incident Found**: {dict(incident)}")
+                
+                # Add a delete button to delete the incident found
+                if st.button(f"Delete Incident {incident['call_key']}"):
+                    delete_incident(incident['call_key'])
+                    st.success(f"Incident {incident['call_key']} deleted successfully!")
+        else:
+            st.error(f"No incidents found with call key: {call_key}")
+
+# Function to display the Dashboard with interactive Altair charts
+def dashboard():
+    st.subheader("Dashboard: Incident Analysis")
+
+    # Connect to the database and fetch data for the charts
+    conn = sqlite3.connect('database/911_Call_Data.db')
+    df_calls = pd.read_sql_query("SELECT * FROM Calls;", conn)
+
+    # Plot 1: Priority Distribution (Bar Chart)
+    st.subheader("Priority Distribution")
+    priority_counts = df_calls['priority'].value_counts().reset_index()
+    priority_counts.columns = ['Priority', 'Count']
+
+    priority_chart = alt.Chart(priority_counts).mark_bar().encode(
+        x='Priority:N',
+        y='Count:Q',
+        color='Priority:N'
+    ).properties(
+        title='Priority Distribution'
+    )
+    st.altair_chart(priority_chart, use_container_width=True)
+
+    # Plot 2: Distribution of Calls by Hour of Day (Line Chart)
+    st.subheader("Distribution of Calls by Hour of Day")
+    df_calls['call_date_time'] = pd.to_datetime(df_calls['call_date_time'], errors='coerce')
+    df_calls = df_calls.dropna(subset=['call_date_time'])
+    df_calls['hour'] = df_calls['call_date_time'].dt.hour
+
+    df_hourly = df_calls.groupby('hour').size().reset_index(name="count")
+
+    hour_chart = alt.Chart(df_hourly).mark_line().encode(
+        x='hour:O',
+        y='count:Q',
+        tooltip=['hour:O', 'count:Q']
+    ).properties(
+        title="Calls by Hour of Day"
+    )
+    st.altair_chart(hour_chart, use_container_width=True)
+
+    # Plot 3: Number of Calls by District (Bar Chart)
+    st.subheader("Number of Calls by District")
+    query_district = """
+    SELECT J.district, COUNT(*) as count
+    FROM Calls C
+    JOIN Jurisdictions J ON C.jurisdiction_id = J.jurisdiction_id
+    GROUP BY J.district;
+    """
+    df_district = pd.read_sql_query(query_district, conn)
+
+    district_chart = alt.Chart(df_district).mark_bar().encode(
+        x='district:N',
+        y='count:Q',
+        color='district:N'
+    ).properties(
+        title="Number of Calls by District"
+    )
+    st.altair_chart(district_chart, use_container_width=True)
+
+    # Plot 4: Number of Calls by Neighborhood (Bar Chart)
+    st.subheader("Number of Calls by Neighborhood")
+    query_neighborhood = """
+    SELECT L.neighborhood, COUNT(*) AS count
+    FROM Calls C
+    JOIN Locations L ON C.reporter_location_id = L.location_id
+    GROUP BY L.neighborhood;
+    """
+    df_neighborhood = pd.read_sql_query(query_neighborhood, conn)
+
+    neighborhood_chart = alt.Chart(df_neighborhood).mark_bar().encode(
+        x='neighborhood:N',
+        y='count:Q',
+        color='neighborhood:N'
+    ).properties(
+        title="Number of Calls by Reporter Neighborhood"
+    )
+    st.altair_chart(neighborhood_chart, use_container_width=True)
+
+    # Plot 5: Total Calls by Priority Over Time (Line Chart)
+    st.subheader("Total Calls by Priority Over Time")
+    df_calls['date'] = df_calls['call_date_time'].dt.date
+    df_priority_over_time = df_calls.groupby(['date', 'priority']).size().reset_index(name='count')
+
+    priority_time_chart = alt.Chart(df_priority_over_time).mark_line().encode(
+        x='date:T',
+        y='count:Q',
+        color='priority:N',
+        tooltip=['date:T', 'count:Q', 'priority:N']
+    ).properties(
+        title="Total Calls by Priority Over Time"
+    )
+    st.altair_chart(priority_time_chart, use_container_width=True)
+
+    # Plot 6: Calls by Location (Bar Chart)
+    st.subheader("Calls by Location")
+    query_location = """
+    SELECT L.location_id, COUNT(*) AS count
+    FROM Calls C
+    JOIN Locations L ON C.reporter_location_id = L.location_id
+    GROUP BY L.location_id;
+    """
+    df_location = pd.read_sql_query(query_location, conn)
+
+    location_chart = alt.Chart(df_location).mark_bar().encode(
+        x='location_id:N',
+        y='count:Q',
+        color='location_id:N'
+    ).properties(
+        title="Number of Calls by Location"
+    )
+    st.altair_chart(location_chart, use_container_width=True)
+
+    conn.close()
+
+# Streamlit sidebar for navigation
+menu = ["View Latest 10 Incidents", "Add Incident", "Update Incident", "Search Incidents", "Dashboard"]
+choice = st.sidebar.selectbox("Select an Option", menu)
+
+if choice == "View Latest 10 Incidents":
+    display_incidents()
+elif choice == "Add Incident":
+    add_incident()
+elif choice == "Update Incident":
+    update_existing_incident()
+elif choice == "Search Incidents":
+    search_incident_form()
+elif choice == "Dashboard":
+    dashboard()
