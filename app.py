@@ -287,5 +287,5 @@ elif choice == "Add Incident":
     add_incident()
 elif choice == "Update Incident":
     update_existing_incident()
-elif choice == "Search Incidents":
+elif choice == "Search & Delete Incidents":
     search_incident_form()
