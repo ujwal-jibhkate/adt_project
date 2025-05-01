@@ -276,7 +276,7 @@ def dashboard():
 
 st.title("911 Incident Management System")
 # Streamlit sidebar for navigation
-menu = ["Dashboard", "View Latest 10 Incidents", "Add Incident", "Update Incident", "Search Incidents"]
+menu = ["Dashboard", "View Latest 10 Incidents", "Add Incident", "Update Incident", "Search & Delete Incidents"]
 choice = st.sidebar.selectbox("Select an Option", menu, index=0)  # Set "Dashboard" as the default option
 
 if choice == "Dashboard":
