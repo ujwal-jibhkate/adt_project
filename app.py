@@ -2,15 +2,26 @@ import streamlit as st
 import sqlite3
 import altair as alt
 import pandas as pd
-
+import os, base64
 from backend import create_incident, read_incidents, update_incident, delete_incident, search_incident
 import uuid
 
-# Streamlit UI for the app
-st.title("911 Incident Management System")
 
 # Function to display the latest 10 incidents
 def display_incidents():
+    """
+    Display the latest 10 incidents in the database.
+
+    This function will show the following details of each incident:
+        - Call Key
+        - Priority
+        - Description
+        - Call Time (Date and Time)
+
+    If there are no incidents in the database, it will display a message saying "No incidents found."
+
+    It will not show the delete button in this section anymore. If you want to delete an incident, it will now be handled through the "Search Incidents" tab.
+    """
     st.subheader("View Latest 10 Incidents")
     incidents = read_incidents()
 
@@ -19,15 +30,27 @@ def display_incidents():
     else:
         for incident in incidents:
             # Access columns by name (incident is a sqlite3.Row object)
+            call_time = incident['call_date_time']
             st.write(f"**Call Key**: {incident['call_key']} - **Priority**: {incident['priority']} - **Description**: {incident['description']}")
+            st.write(f"**Call Time**: {call_time}")  # Added date and time of the incident
+            st.markdown("---")
             # Removed the delete button from the "View Latest 10 Incidents" section
             # If you want to delete an incident, it will now be handled through the "Search Incidents" tab
 
 # Function to add a new incident
 def add_incident():
+    """
+    Display a form to add a new incident to the database.
+
+    This function provides a Streamlit form for users to enter details of a new incident,
+    including record ID, call date and time, priority, description, call number, incident
+    location ID, reporter location ID, and jurisdiction ID. Upon form submission, a new
+    incident is created with a unique call key and added to the database. A success message
+    is displayed after the incident is successfully added.
+    """
+
     st.subheader("Add New Incident")
     with st.form(key='add_incident_form'):
-        call_key = st.text_input("Call Key", value="")  # Optional: Leave blank for auto-generation
         record_id = st.text_input("Record ID")
         call_date_time = st.text_input("Call Date and Time (YYYY/MM/DD HH:MM:SS+00)")
         priority = st.selectbox("Priority", ["Low", "Medium", "High", "Non-Emergency"])
@@ -40,14 +63,27 @@ def add_incident():
         submit_button = st.form_submit_button(label="Add Incident")
         
         if submit_button:
-            # Generate call_key if not provided
-            if not call_key:
-                call_key = str(uuid.uuid4())
+            # Generate call_key automatically
+            call_key = str(uuid.uuid4())
+            # Create the incident
             create_incident(call_key, record_id, call_date_time, priority, description, call_number, incident_location_id, reporter_location_id, jurisdiction_id)
-            st.success(f"Incident {call_key} added successfully!")
+            
+            # Show success message using Streamlit's default format
+            st.success(f"Incident has been successfully added with the Call Key: **{call_key}**")
+
 
 # Function to update an incident
 def update_existing_incident():
+    """
+    Display a form to update an existing incident in the database.
+
+    This function provides a Streamlit form for users to enter a call key to update an incident.
+    Upon form submission, the incident is updated with new priority and description, and a success
+    message is displayed after the incident is successfully updated.
+
+    If no incident is found with the given call key, an error message is displayed.
+    """
+    
     st.subheader("Update Incident")
     call_key = st.text_input("Enter Call Key to Update")
     
@@ -65,8 +101,19 @@ def update_existing_incident():
         else:
             st.error(f"No incident found with call key: {call_key}")
 
-# Function to search incidents by call_key and display the result as a dictionary
+# Function to search incidents by call_key and display the result
 def search_incident_form():
+    """
+    Display a form to search for incidents by call_key and display the result.
+    
+    This function provides a Streamlit form for users to enter a call key to search for an incident.
+    Upon form submission, the incident is searched in the database and the result is displayed in a
+    clean format using Streamlit's default layout.
+
+    If no incident is found with the given call key, an error message is displayed.
+
+    Additionally, a delete button is provided to delete the incident found.
+    """
     st.subheader("Search Incidents by Call Key")
     call_key = st.text_input("Enter Call Key")
 
@@ -74,9 +121,18 @@ def search_incident_form():
         results = search_incident(call_key=call_key)
         
         if results:
+            # Use Streamlit default layout for displaying search results in a readable format
             for incident in results:
-                # Display the result as a dictionary
-                st.write(f"**Incident Found**: {dict(incident)}")
+                # Display the result in a clean format
+                st.markdown("### Incident Details")
+                st.write(f"**Call Key**: {incident['call_key']}")
+                st.write(f"**Priority**: {incident['priority']}")
+                st.write(f"**Description**: {incident['description']}")
+                st.write(f"**Call Number**: {incident['call_number']}")
+                st.write(f"**Incident Location ID**: {incident['incident_location_id']}")
+                st.write(f"**Reporter Location ID**: {incident['reporter_location_id']}")
+                st.write(f"**Jurisdiction ID**: {incident['jurisdiction_id']}")
+                st.write(f"**Call Date and Time**: {incident['call_date_time']}")
                 
                 # Add a delete button to delete the incident found
                 if st.button(f"Delete Incident {incident['call_key']}"):
@@ -87,6 +143,26 @@ def search_incident_form():
 
 # Function to display the Dashboard with interactive Altair charts
 def dashboard():
+    """
+    Displays a dashboard with interactive Altair charts for incident analysis.
+
+    The dashboard consists of six charts:
+
+    1. Priority Distribution (Bar Chart)
+    2. Distribution of Calls by Hour of Day (Line Chart)
+    3. Number of Calls by District (Bar Chart)
+    4. Number of Calls by Neighborhood (Bar Chart)
+    5. Total Calls by Priority Over Time (Line Chart)
+    6. Calls by Location (Bar Chart)
+
+    The charts are interactive, allowing users to hover over the data points to see more
+    information about each incident.
+
+    This function uses the Altair library to create the charts and Streamlit to display them in a
+    dashboard layout.
+
+    :return: None
+    """
     st.subheader("Dashboard: Incident Analysis")
 
     # Connect to the database and fetch data for the charts
@@ -104,7 +180,7 @@ def dashboard():
         color='Priority:N'
     ).properties(
         title='Priority Distribution'
-    )
+    ).interactive()  # Add interactivity to the chart
     st.altair_chart(priority_chart, use_container_width=True)
 
     # Plot 2: Distribution of Calls by Hour of Day (Line Chart)
@@ -121,7 +197,7 @@ def dashboard():
         tooltip=['hour:O', 'count:Q']
     ).properties(
         title="Calls by Hour of Day"
-    )
+    ).interactive()  # Add interactivity to the chart
     st.altair_chart(hour_chart, use_container_width=True)
 
     # Plot 3: Number of Calls by District (Bar Chart)
@@ -140,7 +216,7 @@ def dashboard():
         color='district:N'
     ).properties(
         title="Number of Calls by District"
-    )
+    ).interactive()  # Add interactivity to the chart
     st.altair_chart(district_chart, use_container_width=True)
 
     # Plot 4: Number of Calls by Neighborhood (Bar Chart)
@@ -159,7 +235,7 @@ def dashboard():
         color='neighborhood:N'
     ).properties(
         title="Number of Calls by Reporter Neighborhood"
-    )
+    ).interactive()  # Add interactivity to the chart
     st.altair_chart(neighborhood_chart, use_container_width=True)
 
     # Plot 5: Total Calls by Priority Over Time (Line Chart)
@@ -174,7 +250,7 @@ def dashboard():
         tooltip=['date:T', 'count:Q', 'priority:N']
     ).properties(
         title="Total Calls by Priority Over Time"
-    )
+    ).interactive()  # Add interactivity to the chart
     st.altair_chart(priority_time_chart, use_container_width=True)
 
     # Plot 6: Calls by Location (Bar Chart)
@@ -193,16 +269,19 @@ def dashboard():
         color='location_id:N'
     ).properties(
         title="Number of Calls by Location"
-    )
+    ).interactive()  # Add interactivity to the chart
     st.altair_chart(location_chart, use_container_width=True)
 
     conn.close()
 
+st.title("911 Incident Management System")
 # Streamlit sidebar for navigation
-menu = ["View Latest 10 Incidents", "Add Incident", "Update Incident", "Search Incidents", "Dashboard"]
-choice = st.sidebar.selectbox("Select an Option", menu)
+menu = ["Dashboard", "View Latest 10 Incidents", "Add Incident", "Update Incident", "Search Incidents"]
+choice = st.sidebar.selectbox("Select an Option", menu, index=0)  # Set "Dashboard" as the default option
 
-if choice == "View Latest 10 Incidents":
+if choice == "Dashboard":
+    dashboard()  # Load the dashboard
+elif choice == "View Latest 10 Incidents":
     display_incidents()
 elif choice == "Add Incident":
     add_incident()
@@ -210,5 +289,3 @@ elif choice == "Update Incident":
     update_existing_incident()
 elif choice == "Search Incidents":
     search_incident_form()
-elif choice == "Dashboard":
-    dashboard()
