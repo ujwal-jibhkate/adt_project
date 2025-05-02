@@ -76,8 +76,8 @@ The **main features** of the system include:
 Clone the repository to your local machine:
 
 ```bash
-git clone https://github.com/your-username/911-incident-management-system.git
-cd 911-incident-management-system
+git clone https://github.com/ujwal-jibhkate/adt_project.git
+cd adt_project
 ```
 
 ### **Step 2**: Set Up a Virtual Environment
